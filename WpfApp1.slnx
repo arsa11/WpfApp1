@@ -1,0 +1,14 @@
+<Solution>
+  <Configurations>
+    <BuildType Name="63" />
+    <BuildType Name="Debug" />
+    <BuildType Name="Release" />
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="WpfApp1/WpfApp1.csproj">
+    <BuildType Solution="63|Any CPU" Project="Release" />
+    <BuildType Solution="Release|x64" Project="Debug" />
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+</Solution>
