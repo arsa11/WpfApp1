@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO.Ports;
+using System.Linq;
 using WpfApp1.Models;
 
 namespace WpfApp1.Services
@@ -24,7 +26,7 @@ namespace WpfApp1.Services
                 NewLine = "\n"
             };
 
-            _port.Open(); // откроется или кинет исключение
+            _port.Open();
         }
 
         public void Close()
@@ -38,7 +40,6 @@ namespace WpfApp1.Services
                 }
                 catch
                 {
-                    // игнорируем
                 }
                 finally
                 {
@@ -60,7 +61,6 @@ namespace WpfApp1.Services
             }
             catch
             {
-                // можно добавить лог/сообщение
             }
         }
 
@@ -76,6 +76,53 @@ namespace WpfApp1.Services
             catch
             {
             }
+        }
+
+        public void SendKeyConfig(int buttonNumber, string title)
+        {
+            if (!IsOpen) return;
+
+            string safeTitle = NormalizeTitle(title);
+            string line = $"d_{buttonNumber}_{safeTitle}";
+
+            try
+            {
+                _port!.WriteLine(line);
+            }
+            catch
+            {
+            }
+        }
+
+        public void SendAllKeyConfigs(IEnumerable<KeyBox> boxes)
+        {
+            if (!IsOpen) return;
+
+            foreach (var box in boxes.OrderBy(b => b.Index))
+            {
+                string title = string.IsNullOrWhiteSpace(box.DisplayName)
+                    ? $"Key{box.Index + 1}"
+                    : box.DisplayName;
+
+                SendKeyConfig(box.Index + 1, title);
+            }
+        }
+
+        private static string NormalizeTitle(string? title)
+        {
+            if (string.IsNullOrWhiteSpace(title))
+                return "Empty";
+
+            string result = title.Trim();
+
+            result = result.Replace("\r", " ");
+            result = result.Replace("\n", " ");
+            result = result.Replace("_", "-");
+
+            while (result.Contains("  "))
+                result = result.Replace("  ", " ");
+
+            return result;
         }
 
         public void Dispose()

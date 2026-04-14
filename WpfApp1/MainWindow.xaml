@@ -4,18 +4,16 @@
         xmlns:local="clr-namespace:WpfApp1.Models"
         Title="ARSADECK"
         Icon="Assets/arsadeck.ico"
-        Height="750" Width="700"
-        MinHeight="750" MinWidth="700"
+        Height="750" Width="980"
+        MinHeight="750" MinWidth="980"
         WindowStyle="None"
         AllowsTransparency="True"
         MouseDown="Window_MouseDown">
 
     <Window.Resources>
 
-        <!-- Конвертер LedMode <-> bool -->
         <local:LedModeToBoolConverter x:Key="LedModeToBoolConverter"/>
 
-        <!-- Стиль неонового квадратика (ячейки) -->
         <Style x:Key="TileBorderStyle" TargetType="Border">
             <Setter Property="CornerRadius" Value="10"/>
             <Setter Property="BorderThickness" Value="1.5"/>
@@ -37,7 +35,6 @@
             </Setter>
 
             <Style.Triggers>
-                <!-- Ховер -->
                 <Trigger Property="IsMouseOver" Value="True">
                     <Trigger.EnterActions>
                         <BeginStoryboard>
@@ -73,7 +70,6 @@
                     </Trigger.ExitActions>
                 </Trigger>
 
-                <!-- Неоновое свечение при активации -->
                 <DataTrigger Binding="{Binding IsActive}" Value="True">
                     <Setter Property="BorderBrush" Value="#00FFFF"/>
                     <Setter Property="BorderThickness" Value="2.5"/>
@@ -89,7 +85,6 @@
             </Style.Triggers>
         </Style>
 
-        <!-- iOS-переключатель -->
         <Style x:Key="IosToggleStyle" TargetType="ToggleButton">
             <Setter Property="Width" Value="44"/>
             <Setter Property="Height" Value="24"/>
@@ -104,7 +99,6 @@
                             <Border x:Name="SwitchTrack"
                                     CornerRadius="12"
                                     Background="#777777"/>
-
                             <Border x:Name="SwitchThumb"
                                     Width="20"
                                     Height="20"
@@ -164,13 +158,12 @@
             </Setter>
         </Style>
 
-        <!-- Стиль кнопок сверху -->
         <Style x:Key="TopButtonStyle" TargetType="Button">
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="Background" Value="#3A3A3A"/>
             <Setter Property="BorderBrush" Value="#555555"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="Padding" Value="8,3"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
             <Setter Property="Template">
@@ -255,7 +248,6 @@
             </Setter>
         </Style>
 
-        <!-- Стиль ComboBox -->
         <Style x:Key="TopComboBoxStyle" TargetType="ComboBox">
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="Background" Value="#2E2E2E"/>
@@ -320,7 +312,6 @@
 
     </Window.Resources>
 
-    <!-- НЕОНОВЫЙ ФОН ОКНА -->
     <Window.Background>
         <LinearGradientBrush x:Name="NeonBrush" StartPoint="0,0" EndPoint="1,1">
             <GradientStop x:Name="NeonStop1" Color="#120032" Offset="0.0"/>
@@ -330,13 +321,11 @@
         </LinearGradientBrush>
     </Window.Background>
 
-    <!-- АНИМАЦИЯ ФОНА ОКНА -->
     <Window.Triggers>
         <EventTrigger RoutedEvent="Window.Loaded">
             <BeginStoryboard>
                 <Storyboard RepeatBehavior="Forever">
 
-                    <!-- Пульсация цвета -->
                     <ColorAnimation Storyboard.TargetName="NeonStop2"
                                     Storyboard.TargetProperty="Color"
                                     From="#0030AA"
@@ -356,7 +345,6 @@
                                     AutoReverse="True"
                                     Duration="0:0:4"/>
 
-                    <!-- Дыхание -->
                     <DoubleAnimation Storyboard.TargetName="NeonStop1"
                                      Storyboard.TargetProperty="Offset"
                                      From="0.0" To="0.2"
@@ -378,7 +366,6 @@
                                      AutoReverse="True"
                                      Duration="0:0:10"/>
 
-                    <!-- Цикл по периметру -->
                     <PointAnimationUsingKeyFrames
                         Storyboard.TargetName="NeonBrush"
                         Storyboard.TargetProperty="StartPoint"
@@ -406,7 +393,6 @@
         </EventTrigger>
     </Window.Triggers>
 
-    <!-- СКРУГЛЁННОЕ ВНУТРЕННЕЕ ОКНО -->
     <Border CornerRadius="18"
             Background="#CC05040A"
             Margin="6">
@@ -417,32 +403,48 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- КАСТОМНАЯ ШАПКА -->
-            <DockPanel Grid.Row="0"
-                       Margin="0,0,0,8"
-                       LastChildFill="True">
+            <Grid Grid.Row="0" Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-                <!-- Левая часть: COM-порт -->
-                <StackPanel Orientation="Horizontal"
+                <StackPanel Grid.Column="0"
+                            Orientation="Horizontal"
                             VerticalAlignment="Center">
                     <TextBlock Text="COM-порт: "
                                VerticalAlignment="Center"
                                Margin="0,0,4,0"
                                Foreground="White"/>
+
                     <ComboBox x:Name="PortComboBox"
-                              Width="140"
+                              Width="120"
                               VerticalAlignment="Center"
                               Margin="0,0,8,0"
                               SelectionChanged="PortComboBox_SelectionChanged"
                               Style="{StaticResource TopComboBoxStyle}"/>
+
                     <Button Content="Обновить"
                             Click="RefreshPortsButton_Click"
                             Margin="0,0,8,0"
                             Style="{StaticResource TopButtonStyle}"/>
+
+                    <Button Content="Сохранить"
+                            Click="SaveConfigButton_Click"
+                            Margin="0,0,8,0"
+                            Style="{StaticResource TopButtonStyle}"/>
+
+                    <Button Content="Отправить"
+                            Click="SendConfigButton_Click"
+                            Margin="0,0,8,0"
+                            Style="{StaticResource TopButtonStyle}"/>
+
                     <Button Content="Очистить"
                             Click="ClearDataButton_Click"
                             Margin="0,0,8,0"
                             Style="{StaticResource TopButtonStyle}"/>
+
                     <TextBlock x:Name="PortStatusText"
                                VerticalAlignment="Center"
                                Foreground="White"
@@ -450,24 +452,51 @@
                                Text="Порт не выбран"/>
                 </StackPanel>
 
-                <!-- Право: кнопки окна -->
-                <StackPanel Orientation="Horizontal"
-                            DockPanel.Dock="Right"
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Margin="12,0,12,0">
+                    <TextBlock Text="Конфиг: "
+                               VerticalAlignment="Center"
+                               Margin="0,0,4,0"
+                               Foreground="White"/>
+
+                    <ComboBox x:Name="ConfigComboBox"
+                              Width="170"
+                              VerticalAlignment="Center"
+                              Margin="0,0,8,0"
+                              SelectionChanged="ConfigComboBox_SelectionChanged"
+                              Style="{StaticResource TopComboBoxStyle}"/>
+
+                    <Button Content="Сохранить как"
+                            Click="SaveConfigAsButton_Click"
+                            Margin="0,0,8,0"
+                            Style="{StaticResource TopButtonStyle}"/>
+
+                    <Button Content="Удалить"
+                            Click="DeleteConfigButton_Click"
+                            Style="{StaticResource TopButtonStyle}"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal"
                             HorizontalAlignment="Right"
                             VerticalAlignment="Center">
                     <Button Content="–"
-                            Width="26" Height="22"
+                            Width="30"
+                            Height="24"
                             Margin="8,0,4,0"
                             Click="MinimizeButton_Click"
                             Style="{StaticResource TopButtonStyle}"/>
+
                     <Button Content="X"
-                            Width="26" Height="22"
+                            Width="30"
+                            Height="24"
                             Click="CloseButton_Click"
                             Style="{StaticResource TopButtonStyle}"/>
                 </StackPanel>
-            </DockPanel>
+            </Grid>
 
-            <!-- 12 клеток -->
             <ItemsControl Grid.Row="1" ItemsSource="{Binding KeysBoxes}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
@@ -477,7 +506,6 @@
 
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <!-- ВНЕШНИЙ КВАДРАТ -->
                         <Border Margin="8"
                                 Style="{StaticResource TileBorderStyle}">
 
@@ -496,28 +524,22 @@
                             </Border.ContextMenu>
 
                             <Grid Margin="4">
-                                <!-- ПЛИТКА ПОД СТЕКЛОМ -->
                                 <Border CornerRadius="10"
                                         Background="#1A1A1A">
                                     <Grid Margin="3"
                                           ClipToBounds="True">
-                                        <!-- Фон -->
                                         <Border CornerRadius="8"
                                                 Background="#2A2A2A"/>
 
-                                        <!-- Содержимое -->
                                         <Grid Margin="6" Opacity="0.95">
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="*"/>
                                                 <RowDefinition Height="Auto"/>
-                                                <!-- фон под DisplayName -->
                                                 <RowDefinition Height="Auto"/>
-                                                <!-- F‑клавиша -->
                                                 <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
 
-                                            <!-- Ресурсы -->
                                             <Grid.Resources>
                                                 <Style x:Key="AppIconStyle" TargetType="Image">
                                                     <Setter Property="Visibility" Value="Collapsed"/>
@@ -538,7 +560,6 @@
                                                 </Style>
                                             </Grid.Resources>
 
-                                            <!-- Иконка приложения -->
                                             <Image x:Name="AppIcon"
                                                    Grid.Row="0"
                                                    Source="{Binding Icon}"
@@ -547,7 +568,6 @@
                                                    HorizontalAlignment="Center"
                                                    VerticalAlignment="Center"/>
 
-                                            <!-- Кастомная картинка -->
                                             <Image x:Name="CustomImageControl"
                                                    Grid.Row="0"
                                                    Source="{Binding CustomImage}"
@@ -556,7 +576,6 @@
                                                    HorizontalAlignment="Center"
                                                    VerticalAlignment="Center"/>
 
-                                            <!-- ФОН ПОД НАЗВАНИЕМ (DisplayName) -->
                                             <Border Grid.Row="1"
                                                     Margin="4,4,4,2"
                                                     CornerRadius="6"
@@ -595,7 +614,6 @@
                                                     </EventTrigger>
                                                 </Border.Triggers>
 
-                                                <!-- Тут DisplayName, чтобы переименование сохранялось -->
                                                 <TextBlock Text="{Binding DisplayName}"
                                                            Foreground="#FFFFFF"
                                                            HorizontalAlignment="Center"
@@ -604,7 +622,6 @@
                                                            FontSize="12"/>
                                             </Border>
 
-                                            <!-- F‑клавиша -->
                                             <TextBlock Grid.Row="2"
                                                        Text="{Binding Title}"
                                                        Foreground="#FFFFFF"
@@ -613,7 +630,6 @@
                                                        FontSize="14"
                                                        FontWeight="SemiBold"/>
 
-                                            <!-- Переключатель -->
                                             <ToggleButton Grid.Row="3"
                                                           Style="{StaticResource IosToggleStyle}"
                                                           IsChecked="{Binding Mode,
@@ -622,7 +638,6 @@
                                                           HorizontalAlignment="Center"
                                                           Margin="0,2,0,0"/>
 
-                                            <!-- Toggle / Hold -->
                                             <StackPanel Grid.Row="4"
                                                         Orientation="Horizontal"
                                                         HorizontalAlignment="Center"
@@ -637,7 +652,6 @@
                                             </StackPanel>
                                         </Grid>
 
-                                        <!-- Стекло -->
                                         <Border CornerRadius="8"
                                                 Background="#20FFFFFF"
                                                 BorderBrush="#55FFFFFF"
@@ -671,7 +685,6 @@
                         </Border>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
-
             </ItemsControl>
 
             <TextBlock Grid.Row="2"

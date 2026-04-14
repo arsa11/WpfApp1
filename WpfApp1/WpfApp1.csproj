@@ -1,32 +1,26 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-	<PropertyGroup>
-		<OutputType>WinExe</OutputType>
-		<TargetFramework>net8.0-windows</TargetFramework>
-		<UseWPF>true</UseWPF>
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
 
-		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
-	
-	</PropertyGroup>
+  <ItemGroup>
+    <None Remove="Assets\arsadeck.ico" />
+  </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="System.IO.Ports" Version="10.0.3" />
+  </ItemGroup>
 
-
-	<ItemGroup>
-	  <None Remove="Assets\arsadeck.ico" />
-	</ItemGroup>
-
-	<ItemGroup>
-		<FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
-	</ItemGroup>
-
-	<ItemGroup>
-	  <PackageReference Include="System.IO.Ports" Version="10.0.3" />
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Content Include="Assets\arsadeck.ico">
-	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-	  </Content>
-	</ItemGroup>
+  <ItemGroup>
+    <Content Include="Assets\arsadeck.ico">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 
 </Project>

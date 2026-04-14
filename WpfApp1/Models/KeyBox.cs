@@ -1,73 +1,127 @@
 ﻿using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using System.Windows.Forms;
 using System.Windows.Media;
+using Forms = System.Windows.Forms;
 
 namespace WpfApp1.Models
 {
-    public enum LedMode
-    {
-        Toggle,
-        Hold
-    }
-
     public enum KeyBoxType
     {
         App,
         Custom
     }
 
+    public enum LedMode
+    {
+        Toggle,
+        Hold
+    }
+
     public class KeyBox : INotifyPropertyChanged
     {
-        private bool _isActive;
+        private int _index;
+        private Forms.Keys _keyCode;
         private string _title = "";
         private string _appName = "Нет программы";
         private string? _appPath;
         private ImageSource? _icon;
-        private LedMode _mode = LedMode.Toggle;
-
-        private KeyBoxType _type = KeyBoxType.App;
-        private string _customTitle = "Пусто";
-        private string? _customImagePath;
+        private string? _customTitle;
         private ImageSource? _customImage;
+        private string? _customImagePath;
+        private KeyBoxType _type = KeyBoxType.App;
+        private LedMode _mode = LedMode.Toggle;
+        private bool _isActive;
 
-        public int Index { get; set; }            // 0..11
-        public Keys KeyCode { get; set; }         // F13..F24
+        public int Index
+        {
+            get => _index;
+            set
+            {
+                _index = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public Forms.Keys KeyCode
+        {
+            get => _keyCode;
+            set
+            {
+                _keyCode = value;
+                OnPropertyChanged();
+            }
+        }
 
         public string Title
         {
             get => _title;
-            set { _title = value; OnPropertyChanged(); }
+            set
+            {
+                _title = value;
+                OnPropertyChanged();
+            }
         }
 
         public string AppName
         {
             get => _appName;
-            set { _appName = value; OnPropertyChanged(); OnPropertyChanged(nameof(DisplayName)); }
+            set
+            {
+                _appName = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(DisplayName));
+            }
         }
 
         public string? AppPath
         {
             get => _appPath;
-            set { _appPath = value; OnPropertyChanged(); }
+            set
+            {
+                _appPath = value;
+                OnPropertyChanged();
+            }
         }
 
         public ImageSource? Icon
         {
             get => _icon;
-            set { _icon = value; OnPropertyChanged(); OnPropertyChanged(nameof(DisplayIcon)); }
+            set
+            {
+                _icon = value;
+                OnPropertyChanged();
+            }
         }
 
-        public bool IsActive
+        public string? CustomTitle
         {
-            get => _isActive;
-            set { _isActive = value; OnPropertyChanged(); }
+            get => _customTitle;
+            set
+            {
+                _customTitle = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(DisplayName));
+            }
         }
 
-        public LedMode Mode
+        public ImageSource? CustomImage
         {
-            get => _mode;
-            set { _mode = value; OnPropertyChanged(); }
+            get => _customImage;
+            set
+            {
+                _customImage = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public string? CustomImagePath
+        {
+            get => _customImagePath;
+            set
+            {
+                _customImagePath = value;
+                OnPropertyChanged();
+            }
         }
 
         public KeyBoxType Type
@@ -77,37 +131,51 @@ namespace WpfApp1.Models
             {
                 _type = value;
                 OnPropertyChanged();
-                OnPropertyChanged(nameof(DisplayName));
-                OnPropertyChanged(nameof(DisplayIcon));
             }
         }
 
-        public string CustomTitle
+        public LedMode Mode
         {
-            get => _customTitle;
-            set { _customTitle = value; OnPropertyChanged(); OnPropertyChanged(nameof(DisplayName)); }
+            get => _mode;
+            set
+            {
+                _mode = value;
+                OnPropertyChanged();
+            }
         }
 
-        public string? CustomImagePath
+        public bool IsActive
         {
-            get => _customImagePath;
-            set { _customImagePath = value; OnPropertyChanged(); }
+            get => _isActive;
+            set
+            {
+                _isActive = value;
+                OnPropertyChanged();
+            }
         }
 
-        public ImageSource? CustomImage
+        public string DisplayName
         {
-            get => _customImage;
-            set { _customImage = value; OnPropertyChanged(); OnPropertyChanged(nameof(DisplayIcon)); }
-        }
+            get
+            {
+                if (!string.IsNullOrWhiteSpace(CustomTitle))
+                    return CustomTitle!;
 
-        public string DisplayName => Type == KeyBoxType.App ? AppName : CustomTitle;
-        public ImageSource? DisplayIcon => Type == KeyBoxType.App ? Icon : (CustomImage ?? Icon);
+                if (Type == KeyBoxType.App && !string.IsNullOrWhiteSpace(AppName))
+                    return AppName;
+
+                if (Type == KeyBoxType.Custom && !string.IsNullOrWhiteSpace(CustomImagePath))
+                    return "Картинка";
+
+                return "Пусто";
+            }
+        }
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        private void OnPropertyChanged([CallerMemberName] string? name = null)
+        protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
     }
 }

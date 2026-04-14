@@ -8,11 +8,11 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.Windows.Forms;
+using Forms = System.Windows.Forms;
+using WpfBrushes = System.Windows.Media.Brushes;
 using WpfApp1.Config;
 using WpfApp1.Models;
 using WpfApp1.Services;
@@ -24,32 +24,36 @@ namespace WpfApp1
         public ObservableCollection<KeyBox> KeysBoxes { get; } = new ObservableCollection<KeyBox>();
 
         private readonly LedPortService _ledPort = new LedPortService();
-        private readonly string _configPath =
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                         "F13Launcher", "config.json");
 
-        private NotifyIcon _trayIcon;
+        private readonly string _configDirectory =
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "F13Launcher", "Configs");
 
+        private Forms.NotifyIcon? _trayIcon;
         private IntPtr _hookId = IntPtr.Zero;
-        private LowLevelKeyboardProc _proc;
+        private LowLevelKeyboardProc? _proc;
+        private bool _isLoadingConfigList;
+        private bool _isApplyingConfig;
 
         private const int WH_KEYBOARD_LL = 13;
         private const int WM_KEYDOWN = 0x0100;
 
+        private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
+        {
+            WriteIndented = true
+        };
+
         private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
         [DllImport("user32.dll")]
-        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn,
-            IntPtr hMod, uint dwThreadId);
+        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
 
         [DllImport("user32.dll")]
         private static extern bool UnhookWindowsHookEx(IntPtr hhk);
 
         [DllImport("user32.dll")]
-        private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode,
-            IntPtr wParam, IntPtr lParam);
+        private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
 
-        [DllImport("kernel32.dll")]
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto)]
         private static extern IntPtr GetModuleHandle(string lpModuleName);
 
         public MainWindow()
@@ -62,7 +66,8 @@ namespace WpfApp1
             HookKeyboard();
             InitTrayIcon();
             RefreshPorts();
-            LoadConfig();
+            RefreshConfigList();
+            LoadLastOrFirstConfig();
 
             foreach (var box in KeysBoxes)
             {
@@ -72,7 +77,7 @@ namespace WpfApp1
 
         private void InitKeyBoxes()
         {
-            var startKey = Keys.F13;
+            var startKey = Forms.Keys.F13;
             for (int i = 0; i < 12; i++)
             {
                 KeysBoxes.Add(new KeyBox
@@ -82,21 +87,25 @@ namespace WpfApp1
                     Title = (startKey + i).ToString(),
                     AppName = "Нет программы",
                     Type = KeyBoxType.App,
-                    CustomTitle = "Пусто"
+                    CustomTitle = null
                 });
             }
         }
 
-        #region Keyboard hook
-
         private void HookKeyboard()
         {
             _proc = HookCallback;
-            using (var curProcess = Process.GetCurrentProcess())
-            using (var curModule = curProcess.MainModule)
+
+            using var curProcess = Process.GetCurrentProcess();
+            using var curModule = curProcess.MainModule;
+
+            if (curModule != null)
             {
-                _hookId = SetWindowsHookEx(WH_KEYBOARD_LL, _proc,
-                    GetModuleHandle(curModule!.ModuleName), 0);
+                _hookId = SetWindowsHookEx(
+                    WH_KEYBOARD_LL,
+                    _proc,
+                    GetModuleHandle(curModule.ModuleName),
+                    0);
             }
         }
 
@@ -114,9 +123,9 @@ namespace WpfApp1
             if (nCode >= 0 && wParam == (IntPtr)WM_KEYDOWN)
             {
                 int vkCode = Marshal.ReadInt32(lParam);
-                var key = (Keys)vkCode;
+                var key = (Forms.Keys)vkCode;
 
-                if (key >= Keys.F13 && key <= Keys.F24)
+                if (key >= Forms.Keys.F13 && key <= Forms.Keys.F24)
                 {
                     System.Windows.Application.Current.Dispatcher.Invoke(() =>
                     {
@@ -128,9 +137,7 @@ namespace WpfApp1
             return CallNextHookEx(_hookId, nCode, wParam, lParam);
         }
 
-        #endregion
-
-        private void OnGlobalKeyPressed(Keys key)
+        private void OnGlobalKeyPressed(Forms.Keys key)
         {
             var box = KeysBoxes.FirstOrDefault(b => b.KeyCode == key);
             if (box == null)
@@ -152,35 +159,36 @@ namespace WpfApp1
             }
 
             box.IsActive = true;
+
             var timer = new System.Windows.Threading.DispatcherTimer
             {
                 Interval = TimeSpan.FromMilliseconds(150)
             };
+
             timer.Tick += (s, e) =>
             {
                 box.IsActive = false;
                 timer.Stop();
             };
+
             timer.Start();
 
             _ledPort.SendKeyPress(box.Index);
             _ledPort.SendMode(box.Index, box.Mode);
         }
 
-        private void KeyBox_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        private void KeyBox_PropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(KeyBox.Mode))
+            if (_isApplyingConfig)
+                return;
+
+            if (e.PropertyName == nameof(KeyBox.Mode) && sender is KeyBox box)
             {
-                if (sender is KeyBox box)
-                {
-                    _ledPort.SendMode(box.Index, box.Mode);
-                }
+                _ledPort.SendMode(box.Index, box.Mode);
             }
         }
 
-        #region Context menu handlers
-
-        private KeyBox? GetBoxFromMenu(object sender)
+        private static KeyBox? GetBoxFromMenu(object sender)
         {
             if (sender is not System.Windows.Controls.MenuItem mi) return null;
             if (mi.Parent is not System.Windows.Controls.ContextMenu cm) return null;
@@ -194,52 +202,58 @@ namespace WpfApp1
         private void PickExeMenuItem_Click(object sender, RoutedEventArgs e)
         {
             var box = GetBoxFromMenu(sender);
-            if (box == null) return;
+            if (box == null)
+                return;
+
             PickExeForBox(box);
         }
 
         private void PickImageMenuItem_Click(object sender, RoutedEventArgs e)
         {
             var box = GetBoxFromMenu(sender);
-            if (box == null) return;
+            if (box == null)
+                return;
+
             PickImageForBox(box);
         }
 
         private void RenameCustomMenuItem_Click(object sender, RoutedEventArgs e)
         {
             var box = GetBoxFromMenu(sender);
-            if (box == null) return;
+            if (box == null)
+                return;
 
-            var current = box.CustomTitle ?? "";
+            var current = box.CustomTitle ?? box.AppName ?? box.Title ?? "";
             var text = Microsoft.VisualBasic.Interaction.InputBox(
-                "Название для клетки:",
+                "Новое отображаемое имя:",
                 "Переименовать",
                 current);
 
-            if (!string.IsNullOrWhiteSpace(text))
-            {
-                box.CustomTitle = text.Trim();
-                box.Type = KeyBoxType.Custom;
-            }
+            if (string.IsNullOrWhiteSpace(text))
+                return;
+
+            box.CustomTitle = text.Trim();
+
+            // НИЧЕГО больше не меняем:
+            // не трогаем Type
+            // не трогаем AppPath
+            // не трогаем Icon
+            // не трогаем CustomImage
+            // не трогаем CustomImagePath
         }
 
         private void ResetCustomMenuItem_Click(object sender, RoutedEventArgs e)
         {
             var box = GetBoxFromMenu(sender);
-            if (box == null) return;
+            if (box == null)
+                return;
 
-            box.CustomTitle = "Пусто";
-            box.CustomImage = null;
-            box.CustomImagePath = null;
-
-            box.Type = KeyBoxType.App;
+            // Сбрасываем только пользовательское имя.
+            // Программа / картинка остаются.
+            box.CustomTitle = null;
         }
 
-        #endregion
-
-        #region Pick helpers
-
-        private void PickExeForBox(KeyBox box)
+        private static void PickExeForBox(KeyBox box)
         {
             var dlg = new Microsoft.Win32.OpenFileDialog
             {
@@ -251,30 +265,14 @@ namespace WpfApp1
 
             box.AppPath = dlg.FileName;
             box.AppName = Path.GetFileNameWithoutExtension(dlg.FileName);
-            box.Type = KeyBoxType.App;
+            box.Icon = ExtractIconSafe(dlg.FileName);
 
-            try
-            {
-                var icon = System.Drawing.Icon.ExtractAssociatedIcon(dlg.FileName);
-                if (icon != null)
-                {
-                    using (var bmp = icon.ToBitmap())
-                    {
-                        var hBitmap = bmp.GetHbitmap();
-                        var img = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(
-                            hBitmap, IntPtr.Zero, Int32Rect.Empty,
-                            BitmapSizeOptions.FromEmptyOptions());
-                        box.Icon = img;
-                    }
-                }
-            }
-            catch
-            {
-                box.Icon = null;
-            }
+            // Если раньше была кастомная картинка, не удаляем имя,
+            // но переключаем отображение плитки в режим программы.
+            box.Type = KeyBoxType.App;
         }
 
-        private void PickImageForBox(KeyBox box)
+        private static void PickImageForBox(KeyBox box)
         {
             var dlg = new Microsoft.Win32.OpenFileDialog
             {
@@ -286,15 +284,51 @@ namespace WpfApp1
 
             box.CustomImagePath = dlg.FileName;
             box.CustomImage = LoadImageNoLock(dlg.FileName);
-            box.Type = KeyBoxType.Custom;
 
-            if (string.IsNullOrWhiteSpace(box.CustomTitle) || box.CustomTitle == "Пусто")
-            {
+            if (string.IsNullOrWhiteSpace(box.CustomTitle))
                 box.CustomTitle = Path.GetFileNameWithoutExtension(dlg.FileName);
+
+            box.Type = KeyBoxType.Custom;
+        }
+
+        private static ImageSource? ExtractIconSafe(string exePath)
+        {
+            try
+            {
+                var icon = System.Drawing.Icon.ExtractAssociatedIcon(exePath);
+                if (icon == null)
+                    return null;
+
+                using var bmp = icon.ToBitmap();
+                IntPtr hBitmap = bmp.GetHbitmap();
+
+                try
+                {
+                    var img = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(
+                        hBitmap,
+                        IntPtr.Zero,
+                        Int32Rect.Empty,
+                        BitmapSizeOptions.FromEmptyOptions());
+
+                    img.Freeze();
+                    return img;
+                }
+                finally
+                {
+                    DeleteObject(hBitmap);
+                }
+            }
+            catch
+            {
+                return null;
             }
         }
 
-        private static ImageSource? LoadImageNoLock(string filePath)
+        [DllImport("gdi32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool DeleteObject(IntPtr hObject);
+
+        private static BitmapImage? LoadImageNoLock(string filePath)
         {
             try
             {
@@ -313,107 +347,137 @@ namespace WpfApp1
             }
         }
 
-        #endregion
+        private string GetConfigPath(string configName)
+        {
+            return Path.Combine(_configDirectory, configName + ".json");
+        }
 
-        #region Config save/load
+        private void EnsureConfigDirectory()
+        {
+            if (!Directory.Exists(_configDirectory))
+                Directory.CreateDirectory(_configDirectory);
+        }
 
-        private void SaveConfig()
+        private void RefreshConfigList()
+        {
+            EnsureConfigDirectory();
+
+            _isLoadingConfigList = true;
+
+            var names = Directory.GetFiles(_configDirectory, "*.json")
+                .Select(Path.GetFileNameWithoutExtension)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .OrderBy(x => x)
+                .ToList();
+
+            ConfigComboBox.ItemsSource = names;
+
+            _isLoadingConfigList = false;
+        }
+
+        private void LoadLastOrFirstConfig()
+        {
+            RefreshConfigList();
+
+            var items = ConfigComboBox.ItemsSource as System.Collections.IEnumerable;
+            if (items == null)
+                return;
+
+            var first = items.Cast<string>().FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(first))
+            {
+                ConfigComboBox.SelectedItem = first;
+                LoadConfig(first);
+            }
+        }
+
+        private AppConfig BuildCurrentConfig()
+        {
+            var cfg = new AppConfig
+            {
+                ComPort = _ledPort.CurrentPortName
+            };
+
+            foreach (var box in KeysBoxes)
+            {
+                cfg.Keys.Add(new KeyBoxConfig
+                {
+                    Index = box.Index,
+                    Mode = box.Mode,
+                    Type = box.Type,
+                    AppPath = box.AppPath,
+                    CustomTitle = box.CustomTitle,
+                    CustomImagePath = box.CustomImagePath
+                });
+            }
+
+            return cfg;
+        }
+
+        private void SaveConfig(string configName)
         {
             try
             {
-                var cfg = new AppConfig
-                {
-                    ComPort = _ledPort.CurrentPortName
-                };
+                EnsureConfigDirectory();
 
-                foreach (var box in KeysBoxes)
-                {
-                    cfg.Keys.Add(new KeyBoxConfig
-                    {
-                        Index = box.Index,
-                        Mode = box.Mode,
-                        Type = box.Type,
-                        AppPath = box.AppPath,
-                        CustomTitle = box.CustomTitle,
-                        CustomImagePath = box.CustomImagePath
-                    });
-                }
+                var cfg = BuildCurrentConfig();
+                var path = GetConfigPath(configName);
 
-                var dir = Path.GetDirectoryName(_configPath);
-                if (!Directory.Exists(dir))
-                    Directory.CreateDirectory(dir);
+                var json = JsonSerializer.Serialize(cfg, _jsonOptions);
+                File.WriteAllText(path, json);
 
-                var json = JsonSerializer.Serialize(cfg, new JsonSerializerOptions
-                {
-                    WriteIndented = true
-                });
-                File.WriteAllText(_configPath, json);
+                RefreshConfigList();
+                ConfigComboBox.SelectedItem = configName;
             }
             catch
             {
             }
         }
 
-        private void LoadConfig()
+        private void LoadConfig(string configName)
         {
             try
             {
-                if (!File.Exists(_configPath))
+                var path = GetConfigPath(configName);
+                if (!File.Exists(path))
                     return;
 
-                var json = File.ReadAllText(_configPath);
+                var json = File.ReadAllText(path);
                 var cfg = JsonSerializer.Deserialize<AppConfig>(json);
                 if (cfg == null)
                     return;
 
+                _isApplyingConfig = true;
+
                 RefreshPorts();
+
                 if (!string.IsNullOrEmpty(cfg.ComPort))
-                {
                     PortComboBox.SelectedItem = cfg.ComPort;
-                }
 
                 foreach (var kc in cfg.Keys)
                 {
                     var box = KeysBoxes.FirstOrDefault(b => b.Index == kc.Index);
-                    if (box == null) continue;
+                    if (box == null)
+                        continue;
 
                     box.Mode = kc.Mode;
                     box.Type = kc.Type;
 
-                    // App
                     box.AppPath = kc.AppPath;
-                    if (!string.IsNullOrWhiteSpace(kc.AppPath))
+                    if (!string.IsNullOrWhiteSpace(kc.AppPath) && File.Exists(kc.AppPath))
                     {
                         box.AppName = Path.GetFileNameWithoutExtension(kc.AppPath);
-                        try
-                        {
-                            var icon = System.Drawing.Icon.ExtractAssociatedIcon(kc.AppPath);
-                            if (icon != null)
-                            {
-                                using (var bmp = icon.ToBitmap())
-                                {
-                                    var hBitmap = bmp.GetHbitmap();
-                                    var img = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(
-                                        hBitmap, IntPtr.Zero, Int32Rect.Empty,
-                                        BitmapSizeOptions.FromEmptyOptions());
-                                    box.Icon = img;
-                                }
-                            }
-                        }
-                        catch
-                        {
-                            box.Icon = null;
-                        }
+                        box.Icon = ExtractIconSafe(kc.AppPath);
                     }
                     else
                     {
                         box.AppName = "Нет программы";
+                        box.Icon = null;
                     }
 
-                    // Custom
-                    box.CustomTitle = string.IsNullOrWhiteSpace(kc.CustomTitle) ? "Пусто" : kc.CustomTitle;
-                    box.CustomImagePath = kc.CustomImagePath;
+                    box.CustomTitle = string.IsNullOrWhiteSpace(kc.CustomTitle) ? null : kc.CustomTitle;
 
+                    box.CustomImagePath = kc.CustomImagePath;
                     if (!string.IsNullOrWhiteSpace(kc.CustomImagePath) && File.Exists(kc.CustomImagePath))
                     {
                         box.CustomImage = LoadImageNoLock(kc.CustomImagePath);
@@ -423,20 +487,119 @@ namespace WpfApp1
                         box.CustomImage = null;
                     }
 
-                    if (!string.IsNullOrWhiteSpace(box.CustomImagePath) && box.CustomImage != null)
-                        box.Type = KeyBoxType.Custom;
-                    else if (!string.IsNullOrWhiteSpace(box.AppPath))
-                        box.Type = KeyBoxType.App;
+                    // Если тип невалидный после загрузки, восстанавливаем логично.
+                    if (box.Type == KeyBoxType.Custom && box.CustomImage == null)
+                    {
+                        if (!string.IsNullOrWhiteSpace(box.AppPath))
+                            box.Type = KeyBoxType.App;
+                    }
                 }
+            }
+            catch
+            {
+            }
+            finally
+            {
+                _isApplyingConfig = false;
+            }
+        }
+
+        private void SaveConfigButton_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedName = ConfigComboBox.SelectedItem as string;
+            if (string.IsNullOrWhiteSpace(selectedName))
+            {
+                SaveConfigAsButton_Click(sender, e);
+                return;
+            }
+
+            SaveConfig(selectedName);
+            PortStatusText.Text = "Конфигурация сохранена";
+            PortStatusText.Foreground = WpfBrushes.LightGreen;
+        }
+
+        private void SaveConfigAsButton_Click(object sender, RoutedEventArgs e)
+        {
+            var text = Microsoft.VisualBasic.Interaction.InputBox(
+                "Имя новой конфигурации:",
+                "Сохранить конфиг как",
+                ConfigComboBox.SelectedItem as string ?? "Default");
+
+            if (string.IsNullOrWhiteSpace(text))
+                return;
+
+            var configName = text.Trim();
+            SaveConfig(configName);
+
+            PortStatusText.Text = $"Конфиг \"{configName}\" сохранён";
+            PortStatusText.Foreground = WpfBrushes.LightGreen;
+        }
+
+        private void DeleteConfigButton_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedName = ConfigComboBox.SelectedItem as string;
+            if (string.IsNullOrWhiteSpace(selectedName))
+                return;
+
+            var result = MessageBox.Show(
+                $"Удалить конфиг \"{selectedName}\"?",
+                "Удаление",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result != MessageBoxResult.Yes)
+                return;
+
+            try
+            {
+                var path = GetConfigPath(selectedName);
+                if (File.Exists(path))
+                    File.Delete(path);
+
+                RefreshConfigList();
+                LoadLastOrFirstConfig();
+
+                PortStatusText.Text = "Конфигурация удалена";
+                PortStatusText.Foreground = WpfBrushes.OrangeRed;
             }
             catch
             {
             }
         }
 
-        #endregion
+        private void ConfigComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            if (_isLoadingConfigList || _isApplyingConfig)
+                return;
 
-        #region Serial port UI
+            var selectedName = ConfigComboBox.SelectedItem as string;
+            if (string.IsNullOrWhiteSpace(selectedName))
+                return;
+
+            LoadConfig(selectedName);
+
+            PortStatusText.Text = $"Загружен конфиг: {selectedName}";
+            PortStatusText.Foreground = WpfBrushes.LightGreen;
+        }
+
+        private void SendConfigButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!_ledPort.IsOpen)
+            {
+                PortStatusText.Text = "Сначала выбери COM-порт";
+                PortStatusText.Foreground = WpfBrushes.OrangeRed;
+                return;
+            }
+
+            var selectedName = ConfigComboBox.SelectedItem as string;
+            if (!string.IsNullOrWhiteSpace(selectedName))
+                SaveConfig(selectedName);
+
+            _ledPort.SendAllKeyConfigs(KeysBoxes);
+
+            PortStatusText.Text = "Конфигурация отправлена на контроллер";
+            PortStatusText.Foreground = WpfBrushes.LightGreen;
+        }
 
         private void RefreshPorts()
         {
@@ -457,28 +620,29 @@ namespace WpfApp1
             RefreshPorts();
         }
 
-        private void PortComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void PortComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
             var portName = PortComboBox.SelectedItem as string;
+
             if (!string.IsNullOrEmpty(portName))
             {
                 try
                 {
                     _ledPort.Open(portName);
                     PortStatusText.Text = "Открыт " + portName;
-                    PortStatusText.Foreground = Brushes.LightGreen;
+                    PortStatusText.Foreground = WpfBrushes.LightGreen;
                 }
                 catch (Exception ex)
                 {
                     PortStatusText.Text = "Ошибка: " + ex.Message;
-                    PortStatusText.Foreground = Brushes.OrangeRed;
+                    PortStatusText.Foreground = WpfBrushes.OrangeRed;
                 }
             }
             else
             {
                 _ledPort.Close();
                 PortStatusText.Text = "Порт не выбран";
-                PortStatusText.Foreground = Brushes.LightGray;
+                PortStatusText.Foreground = WpfBrushes.LightGray;
             }
         }
 
@@ -487,7 +651,7 @@ namespace WpfApp1
             PortComboBox.SelectedItem = null;
             _ledPort.Close();
             PortStatusText.Text = "Порт не выбран";
-            PortStatusText.Foreground = Brushes.LightGray;
+            PortStatusText.Foreground = WpfBrushes.LightGray;
 
             foreach (var box in KeysBoxes)
             {
@@ -495,31 +659,18 @@ namespace WpfApp1
                 box.AppName = "Нет программы";
                 box.Icon = null;
 
-                box.CustomTitle = "Пусто";
+                box.CustomTitle = null;
                 box.CustomImage = null;
                 box.CustomImagePath = null;
 
                 box.Type = KeyBoxType.App;
                 box.Mode = LedMode.Toggle;
             }
-
-            try
-            {
-                if (File.Exists(_configPath))
-                    File.Delete(_configPath);
-            }
-            catch
-            {
-            }
         }
-
-        #endregion
-
-        #region Tray
 
         private void InitTrayIcon()
         {
-            _trayIcon = new NotifyIcon();
+            _trayIcon = new Forms.NotifyIcon();
 
             try
             {
@@ -546,18 +697,17 @@ namespace WpfApp1
             base.OnStateChanged(e);
 
             if (WindowState == WindowState.Minimized)
-            {
                 Hide();
-            }
         }
-
-        #endregion
 
         protected override void OnClosed(EventArgs e)
         {
             base.OnClosed(e);
 
-            SaveConfig();
+            var selectedName = ConfigComboBox.SelectedItem as string;
+            if (!string.IsNullOrWhiteSpace(selectedName))
+                SaveConfig(selectedName);
+
             UnhookKeyboard();
             _ledPort.Dispose();
 
@@ -568,7 +718,6 @@ namespace WpfApp1
             }
         }
 
-        // Перетаскивание окна за верхнюю область
         private void Window_MouseDown(object sender, MouseButtonEventArgs e)
         {
             if (e.ChangedButton != MouseButton.Left)
@@ -577,6 +726,7 @@ namespace WpfApp1
             if (e.OriginalSource is DependencyObject d)
             {
                 var current = d;
+
                 while (current != null)
                 {
                     if (current is System.Windows.Controls.Button ||
