@@ -55,20 +55,7 @@ namespace WpfApp1.Services
 
             string textMode = mode == LedMode.Toggle ? "TOGGLE" : "HOLD";
             string line = $"MODE {index} {textMode}";
-            try
-            {
-                _port!.WriteLine(line);
-            }
-            catch
-            {
-            }
-        }
 
-        public void SendKeyPress(int index)
-        {
-            if (!IsOpen) return;
-
-            string line = $"KEY {index} PRESS";
             try
             {
                 _port!.WriteLine(line);
@@ -83,7 +70,7 @@ namespace WpfApp1.Services
             if (!IsOpen) return;
 
             string safeTitle = NormalizeTitle(title);
-            string line = $"d_{buttonNumber}_{safeTitle}";
+            string line = $"D_{buttonNumber}_{safeTitle}";
 
             try
             {

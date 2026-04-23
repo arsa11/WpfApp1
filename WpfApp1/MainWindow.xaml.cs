@@ -37,6 +37,33 @@ namespace WpfApp1
         private const int WH_KEYBOARD_LL = 13;
         private const int WM_KEYDOWN = 0x0100;
 
+        private const double FixedAspectRatio = 780.0 / 1000.0;
+        private bool _isResizing;
+        private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (_isResizing)
+                return;
+
+            _isResizing = true;
+
+            try
+            {
+                // Если ширина менялась сильнее — пересчитываем высоту
+                if (Math.Abs(e.NewSize.Width - e.PreviousSize.Width) >
+                    Math.Abs(e.NewSize.Height - e.PreviousSize.Height))
+                {
+                    Height = Width / FixedAspectRatio;
+                }
+                else
+                {
+                    Width = Height * FixedAspectRatio;
+                }
+            }
+            finally
+            {
+                _isResizing = false;
+            }
+        }
         private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
         {
             WriteIndented = true
@@ -58,20 +85,61 @@ namespace WpfApp1
 
         public MainWindow()
         {
-            InitializeComponent();
-
-            DataContext = this;
-
-            InitKeyBoxes();
-            HookKeyboard();
-            InitTrayIcon();
-            RefreshPorts();
-            RefreshConfigList();
-            LoadLastOrFirstConfig();
-
-            foreach (var box in KeysBoxes)
+            try
             {
-                box.PropertyChanged += KeyBox_PropertyChanged;
+                File.AppendAllText("startup.log", $"{DateTime.Now:dd.MM.yyyy HH:mm:ss} MainWindow ctor start{Environment.NewLine}");
+
+                InitializeComponent();
+                File.AppendAllText("startup.log", $"{DateTime.Now:dd.MM.yyyy HH:mm:ss} InitializeComponent OK{Environment.NewLine}");
+
+                try
+                {
+                    var uri = new Uri("pack://application:,,,/Assets/arsadeck.ico", UriKind.Absolute);
+                    var sri = Application.GetResourceStream(uri);
+                    if (sri?.Stream != null)
+                    {
+                        this.Icon = BitmapFrame.Create(sri.Stream);
+                    }
+                }
+                catch
+                {
+                }
+
+                DataContext = this;
+                File.AppendAllText("startup.log", $"{DateTime.Now:dd.MM.yyyy HH:mm:ss} DataContext OK{Environment.NewLine}");
+
+                InitKeyBoxes();
+                File.AppendAllText("startup.log", $"{DateTime.Now:dd.MM.yyyy HH:mm:ss} InitKeyBoxes OK{Environment.NewLine}");
+
+                HookKeyboard();
+                File.AppendAllText("startup.log", $"{DateTime.Now:dd.MM.yyyy HH:mm:ss} HookKeyboard OK{Environment.NewLine}");
+
+                InitTrayIcon();
+                File.AppendAllText("startup.log", $"{DateTime.Now:dd.MM.yyyy HH:mm:ss} InitTrayIcon OK{Environment.NewLine}");
+
+                RefreshPorts();
+                File.AppendAllText("startup.log", $"{DateTime.Now:dd.MM.yyyy HH:mm:ss} RefreshPorts OK{Environment.NewLine}");
+
+                RefreshConfigList();
+                File.AppendAllText("startup.log", $"{DateTime.Now:dd.MM.yyyy HH:mm:ss} RefreshConfigList OK{Environment.NewLine}");
+
+                LoadLastOrFirstConfig();
+                File.AppendAllText("startup.log", $"{DateTime.Now:dd.MM.yyyy HH:mm:ss} LoadLastOrFirstConfig OK{Environment.NewLine}");
+
+                foreach (var box in KeysBoxes)
+                {
+                    box.PropertyChanged += KeyBox_PropertyChanged;
+                }
+
+                File.AppendAllText("startup.log", $"{DateTime.Now:dd.MM.yyyy HH:mm:ss} MainWindow ctor finish{Environment.NewLine}");
+            }
+            catch (Exception ex)
+            {
+                File.AppendAllText("startup.log",
+                    $"{DateTime.Now:dd.MM.yyyy HH:mm:ss} MainWindow ctor ERROR: {ex}{Environment.NewLine}");
+
+                MessageBox.Show(ex.ToString(), "MainWindow ctor error");
+                throw;
             }
         }
 
@@ -173,8 +241,7 @@ namespace WpfApp1
 
             timer.Start();
 
-            _ledPort.SendKeyPress(box.Index);
-            _ledPort.SendMode(box.Index, box.Mode);
+            
         }
 
         private void KeyBox_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -674,7 +741,18 @@ namespace WpfApp1
 
             try
             {
-                _trayIcon.Icon = new System.Drawing.Icon("Assets/arsadeck.ico");
+                var uri = new Uri("pack://application:,,,/Assets/arsadeck.ico", UriKind.Absolute);
+                var sri = Application.GetResourceStream(uri);
+
+                if (sri?.Stream != null)
+                {
+                    using var iconStream = sri.Stream;
+                    _trayIcon.Icon = new System.Drawing.Icon(iconStream);
+                }
+                else
+                {
+                    _trayIcon.Icon = System.Drawing.SystemIcons.Application;
+                }
             }
             catch
             {

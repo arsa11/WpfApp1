@@ -175,7 +175,13 @@ DocProject/Help/*.hhk
 DocProject/Help/*.hhp
 DocProject/Help/Html2
 DocProject/Help/html
-
+bin/
+obj/
+publish/
+.vs/
+InstallerOutput/
+*.zip
+*.exe
 # Click-Once directory
 publish/
 
